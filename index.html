@@ -5,7 +5,7 @@
 <meta name="description" content="Pick a group of GT New Horizons items and get the shortest AE2 Oredict card string that matches exactly those items.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
-/* Layout: item finder | navy "screen" with the string and the group; checker and notes beneath */
+/* Layout: navy "screen" with the string on top; item finder | group beneath; checker and notes last */
 :root {
   --bg: #e9ebf3;
   --panel: #f7f8fc;
@@ -78,9 +78,9 @@ button.link { font: inherit; color: var(--accent); background: none; border: 0; 
 /* the navy screen holding the card string */
 .screen { background: var(--screen); color: var(--screen-fg); border-radius: 4px; padding: 14px; display: grid; gap: 10px; border: 3px solid #3a3f63 }
 .screen h2 { font-size: 17px }
-.screen textarea { width: 100%; min-height: 76px; resize: vertical; font: 500 14px/1.45 var(--f-data); background: #0d1240; color: var(--screen-fg); border: 1px solid #3a4280; border-radius: 3px; padding: 8px 10px; word-break: break-all }
+.screen textarea { width: 100%; min-height: 60px; resize: vertical; font: 500 14px/1.45 var(--f-data); background: #0d1240; color: var(--screen-fg); border: 1px solid #3a4280; border-radius: 3px; padding: 8px 10px; word-break: break-all }
 .screen textarea:focus-visible { outline: 2px solid var(--hl1) }
-.opts { display: grid; gap: 2px }
+.opts { display: flex; flex-wrap: wrap; gap: 4px 16px }
 .screen label, .screen .count { font: 12px var(--f-data); color: #a9b2e6; display: flex; gap: 6px; align-items: center }
 .screen .count.over { color: #ff7a5c }
 .screen button { background: #0d1240; color: var(--screen-fg); border-color: #3a4280 }
@@ -116,6 +116,21 @@ code { font: 500 13px var(--f-data) }
     <p class="lede">Pick the items you want an Oredict card to let through. The page writes the shortest card string it can find that matches exactly that group, and shows anything else the string would also catch.</p>
   </header>
 
+  <section class="screen" aria-label="Card string">
+    <div class="row">
+      <h2>Card string</h2>
+      <div class="opts">
+        <label><input type="checkbox" id="wild" checked> Use wildcards</label>
+        <label title="Only denied items have to stay out. The string may also let through items you did not pick, which keeps it shorter."><input type="checkbox" id="loose"> Only block denied</label>
+      </div>
+    </div>
+    <textarea id="out" readonly spellcheck="false" aria-label="Generated card string" placeholder="Pick some items to get a string."></textarea>
+    <div class="row">
+      <div class="status idle" id="status">No items picked yet.</div>
+      <div class="row"><span class="count" id="count">0 / 1024</span><button class="primary" id="copy">Copy</button></div>
+    </div>
+  </section>
+
   <section class="workspace">
     <div class="card">
       <h2>Find items</h2>
@@ -133,28 +148,12 @@ code { font: 500 13px var(--f-data) }
     </div>
 
     <div class="side">
-      <div class="screen">
-        <div class="row">
-          <h2>Card string</h2>
-          <div class="opts">
-            <label><input type="checkbox" id="wild" checked> Use wildcards</label>
-            <label title="Only denied items have to stay out. The string may also let through items you did not pick, which keeps it shorter."><input type="checkbox" id="loose"> Only block denied</label>
-          </div>
-        </div>
-        <textarea id="out" readonly spellcheck="false" aria-label="Generated card string" placeholder="Pick some items to get a string."></textarea>
-        <div class="row">
-          <span class="count" id="count">0 / 1024</span>
-          <button class="primary" id="copy">Copy</button>
-        </div>
-        <div class="status idle" id="status">No items picked yet.</div>
-      </div>
-
       <div class="card">
         <div class="row">
           <h2 id="groupTitle">Your group</h2>
           <button id="clear" hidden>Clear</button>
         </div>
-        <p class="hint" id="groupHint">Click items on the left to add them here. Right-click (or long-press) an item to deny it, so the string must keep it out.</p>
+        <p class="hint" id="groupHint">Click items in the search results to add them here. Right-click (or long-press) an item to deny it, so the string must keep it out.</p>
         <ul class="group" id="group"></ul>
         <p class="sub" id="denyTitle" hidden></p>
         <ul class="group" id="denied"></ul>
