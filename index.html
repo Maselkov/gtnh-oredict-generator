@@ -60,12 +60,15 @@ button.link { font: inherit; color: var(--accent); background: none; border: 0; 
 .chip { font: 500 12px var(--f-data); padding: 3px 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid transparent; color: var(--fg); max-width: 100%; overflow-wrap: anywhere; text-align: left }
 .chip b { color: var(--muted); font-weight: 500; margin-left: 4px }
 .chip.on { background: var(--accent); color: #fff } .chip.on b { color: #dfe5ff }
+.chip.no { background: var(--bad); color: #fff } .chip.no b { color: #ffe2dc }
 
 /* item tiles */
 .grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr)); gap: 6px }
 .tile { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); cursor: pointer; text-align: left; font: inherit; width: 100%; color: inherit }
 .tile:hover { border-color: var(--accent) }
 .tile.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--bg)) }
+.tile.no { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, var(--bg)) }
+.tile.no .t { text-decoration: line-through; text-decoration-color: var(--bad) }
 .tile .t { font-size: 14px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .tile .s { font: 500 11px var(--f-data); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
 .ico { width: 32px; height: 32px; image-rendering: pixelated; display: block }
@@ -77,6 +80,7 @@ button.link { font: inherit; color: var(--accent); background: none; border: 0; 
 .screen h2 { font-size: 17px }
 .screen textarea { width: 100%; min-height: 76px; resize: vertical; font: 500 14px/1.45 var(--f-data); background: #0d1240; color: var(--screen-fg); border: 1px solid #3a4280; border-radius: 3px; padding: 8px 10px; word-break: break-all }
 .screen textarea:focus-visible { outline: 2px solid var(--hl1) }
+.opts { display: grid; gap: 2px }
 .screen label, .screen .count { font: 12px var(--f-data); color: #a9b2e6; display: flex; gap: 6px; align-items: center }
 .screen .count.over { color: #ff7a5c }
 .screen button { background: #0d1240; color: var(--screen-fg); border-color: #3a4280 }
@@ -91,6 +95,8 @@ button.link { font: inherit; color: var(--accent); background: none; border: 0; 
 .group button { padding: 0 7px; font-size: 14px; line-height: 20px; border-color: transparent; background: none; color: var(--muted) }
 .group button:hover { color: var(--bad); border-color: var(--line) }
 .group .tag { font: 500 11px var(--f-data); color: var(--muted) }
+.group li.no .t { text-decoration: line-through; text-decoration-color: var(--bad) }
+.sub { font: 700 13px var(--f-data); color: var(--bad); margin: 6px 0 0 }
 details summary { cursor: pointer; font-weight: 700; font-size: 14px }
 details[open] summary { margin-bottom: 8px }
 
@@ -115,7 +121,7 @@ code { font: 500 13px var(--f-data) }
       <h2>Find items</h2>
       <input type="search" id="q" placeholder="Search by name, ore name, or @mod" autocomplete="off" spellcheck="false" aria-label="Search items">
       <div id="nameBox" hidden>
-        <p class="hint">Ore names: click one to add every item that has it.</p>
+        <p class="hint">Ore names: click one to add every item that has it, right-click to deny them all.</p>
         <div class="chips" id="names"></div>
       </div>
       <div class="row">
@@ -130,7 +136,10 @@ code { font: 500 13px var(--f-data) }
       <div class="screen">
         <div class="row">
           <h2>Card string</h2>
-          <label><input type="checkbox" id="wild" checked> Use wildcards</label>
+          <div class="opts">
+            <label><input type="checkbox" id="wild" checked> Use wildcards</label>
+            <label title="Only denied items have to stay out. The string may also let through items you did not pick, which keeps it shorter."><input type="checkbox" id="loose"> Only block denied</label>
+          </div>
         </div>
         <textarea id="out" readonly spellcheck="false" aria-label="Generated card string" placeholder="Pick some items to get a string."></textarea>
         <div class="row">
@@ -145,8 +154,10 @@ code { font: 500 13px var(--f-data) }
           <h2 id="groupTitle">Your group</h2>
           <button id="clear" hidden>Clear</button>
         </div>
-        <p class="hint" id="groupHint">Click items on the left to add them here.</p>
+        <p class="hint" id="groupHint">Click items on the left to add them here. Right-click (or long-press) an item to deny it, so the string must keep it out.</p>
         <ul class="group" id="group"></ul>
+        <p class="sub" id="denyTitle" hidden></p>
+        <ul class="group" id="denied"></ul>
         <details id="alsoBox" hidden>
           <summary id="alsoTitle"></summary>
           <p class="hint" id="alsoHint"></p>
@@ -175,6 +186,7 @@ code { font: 500 13px var(--f-data) }
         <li><code>|</code> is OR, <code>&amp;</code> is AND, and <code>!</code> in front of a term means "has no ore name like this". They are applied strictly left to right, with no brackets.</li>
         <li><code>ingot*</code> starts with, <code>*Copper</code> ends with, <code>*Hot*</code> contains, and a plain name must match exactly.</li>
         <li>An item matches a term if any one of its ore names does.</li>
+        <li>Denied items are kept out with <code>&amp;!</code> terms. Normally everything you did not pick is kept out anyway; tick "Only block denied" to let other items through and get a shorter string.</li>
         <li>If the string contains any of <code>\ ^ $ + ( ) [ ]</code>, the whole thing is read as one regular expression instead.</li>
       </ul>
     </div>
@@ -200,6 +212,7 @@ let data, index, mods = {};
 let lower = [];          // per item: lowercased "label key"
 let iconsOk = true;
 const picked = new Set();
+const denied = new Set();
 let results = [], shown = 0, checkSet = [], checkShown = 0;
 let lastGen = null;
 
@@ -238,7 +251,7 @@ function itemTitle(i) {
 function tile(i) {
   const li = document.createElement('li');
   const b = document.createElement('button');
-  b.className = 'tile' + (picked.has(i) ? ' on' : '');
+  b.className = 'tile' + (picked.has(i) ? ' on' : denied.has(i) ? ' no' : '');
   b.dataset.i = i;
   b.title = itemTitle(i);
   b.setAttribute('aria-pressed', picked.has(i));
@@ -303,7 +316,7 @@ function renderNames(words, mod) {
   for (const k of list) {
     const b = document.createElement('button');
     const all = index.nameItems[k];
-    b.className = 'chip' + (all.every(i => picked.has(i)) ? ' on' : '');
+    b.className = 'chip' + (all.every(i => picked.has(i)) ? ' on' : all.every(i => denied.has(i)) ? ' no' : '');
     b.dataset.k = k;
     b.append(data.names[k]);
     const c = document.createElement('b'); c.textContent = all.length; b.append(c);
@@ -314,29 +327,41 @@ function renderNames(words, mod) {
 
 /* ---------- picking ---------- */
 function toggle(ids, on) {
-  for (const i of ids) on ? picked.add(i) : picked.delete(i);
+  for (const i of ids) { if (on) { picked.add(i); denied.delete(i); } else picked.delete(i); }
+  refresh();
+}
+function deny(ids, on) {
+  for (const i of ids) { if (on) { denied.add(i); picked.delete(i); } else denied.delete(i); }
   refresh();
 }
 function refresh() {
   for (const b of document.querySelectorAll('.tile')) {
     const on = picked.has(+b.dataset.i);
     b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+    b.classList.toggle('no', denied.has(+b.dataset.i));
   }
-  for (const c of document.querySelectorAll('.chip')) c.classList.toggle('on', index.nameItems[+c.dataset.k].every(i => picked.has(i)));
+  for (const c of document.querySelectorAll('.chip')) {
+    const all = index.nameItems[+c.dataset.k];
+    c.classList.toggle('on', all.every(i => picked.has(i)));
+    c.classList.toggle('no', all.every(i => denied.has(i)));
+  }
   $('addAll').textContent = results.length && results.every(i => picked.has(i)) ? 'Remove all results' : 'Add all results';
   renderGroup();
   generate();
   store.set('oredict.picked', JSON.stringify([...picked].map(i => data.items[i][0])));
+  store.set('oredict.denied', JSON.stringify([...denied].map(i => data.items[i][0])));
 }
 
-function groupRow(i, removable, tag) {
+function groupRow(i, removable, tag, kind) {
   const li = document.createElement('li');
+  if (kind === 'deny') li.className = 'no';
   li.title = itemTitle(i);
   const t = document.createElement('span'); t.className = 't'; t.textContent = data.items[i][1];
   li.append(iconEl(i), t);
   if (removable) {
     const b = document.createElement('button'); b.textContent = '×'; b.dataset.i = i;
-    b.setAttribute('aria-label', 'Remove ' + data.items[i][1]);
+    if (kind === 'deny') b.dataset.deny = '1';
+    b.setAttribute('aria-label', (kind === 'deny' ? 'Stop denying ' : 'Remove ') + data.items[i][1]);
     li.append(b);
   } else if (tag) {
     const s = document.createElement('span'); s.className = 'tag'; s.textContent = tag; li.append(s);
@@ -346,12 +371,18 @@ function groupRow(i, removable, tag) {
 function renderGroup() {
   const ids = [...picked].sort((a, b) => data.items[a][1].localeCompare(data.items[b][1]));
   $('groupTitle').textContent = ids.length ? `Your group (${ids.length.toLocaleString()})` : 'Your group';
-  $('groupHint').hidden = ids.length > 0;
-  $('clear').hidden = !ids.length;
+  $('groupHint').hidden = ids.length > 0 || denied.size > 0;
+  $('clear').hidden = !ids.length && !denied.size;
   const frag = document.createDocumentFragment();
   for (const i of ids.slice(0, 500)) frag.append(groupRow(i, true));
   if (ids.length > 500) { const li = document.createElement('li'); li.className = 'hint'; li.textContent = `and ${(ids.length - 500).toLocaleString()} more`; frag.append(li); }
   $('group').replaceChildren(frag);
+  const dn = [...denied].sort((a, b) => data.items[a][1].localeCompare(data.items[b][1]));
+  $('denyTitle').hidden = !dn.length;
+  $('denyTitle').textContent = `Denied (${dn.length.toLocaleString()})`;
+  const df = document.createDocumentFragment();
+  for (const i of dn.slice(0, 500)) df.append(groupRow(i, true, null, 'deny'));
+  $('denied').replaceChildren(df);
 }
 
 /* ---------- generation (in a worker when available) ---------- */
@@ -366,11 +397,12 @@ let genTimer = 0;
 function generate() {
   clearTimeout(genTimer);
   if (!picked.size) { showResult({ string: '', extras: [], missing: [], twins: [] }); return; }
+  const loose = $('loose').checked;
   setStatus('idle', 'Working…');
   genTimer = setTimeout(() => {
-    const msg = { id: ++genId, targets: [...picked], wild: $('wild').checked };
+    const msg = { id: ++genId, targets: [...picked], deny: [...denied], wild: $('wild').checked, loose };
     if (worker) worker.postMessage(msg);
-    else { const r = Oredict.generate(index, msg.targets, { wild: msg.wild }); showResult({ id: msg.id, ...r }); }
+    else { const r = Oredict.generate(index, msg.targets, msg); showResult({ id: msg.id, ...r }); }
   }, 120);
 }
 function setStatus(kind, text) { const s = $('status'); s.className = 'status ' + kind; s.textContent = text; }
@@ -381,19 +413,24 @@ function showResult(r) {
   const len = r.string.length;
   $('count').textContent = `${len} / 1024`;
   $('count').classList.toggle('over', len > 1024);
-  const twins = r.twins.filter(i => !picked.has(i));
+  const loose = $('loose').checked;
+  const twins = loose ? [] : r.twins.filter(i => !picked.has(i));
+  const dn = denied.size ? ` and keeps out the ${denied.size} denied item${denied.size === 1 ? '' : 's'}` : '';
   if (!picked.size) setStatus('idle', 'No items picked yet.');
   else if (len > 1024) setStatus('ng', 'Too long for one card (1024 characters max). Split the group across two cards.');
   else if (r.missing.length) setStatus('ng', `${r.missing.length} picked item${r.missing.length === 1 ? ' is' : 's are'} not matched.`);
-  else if (r.extras.length) setStatus('ng', `Also lets through ${r.extras.length} item${r.extras.length === 1 ? '' : 's'} that cannot be excluded.`);
-  else if (twins.length) setStatus('ok', `Matches your group, plus ${twins.length} item${twins.length === 1 ? '' : 's'} with identical ore names.`);
-  else setStatus('ok', 'Matches exactly your group.');
+  else if (r.extras.length) setStatus('ng', loose
+    ? `${r.extras.length} denied item${r.extras.length === 1 ? '' : 's'} cannot be kept out.`
+    : `Also lets through ${r.extras.length} item${r.extras.length === 1 ? '' : 's'} that cannot be excluded.`);
+  else if (loose) setStatus('ok', `Matches your group${dn}. Other items may get through too.`);
+  else if (twins.length) setStatus('ok', `Matches your group${dn}, plus ${twins.length} item${twins.length === 1 ? '' : 's'} with identical ore names.`);
+  else setStatus('ok', `Matches exactly your group${dn}.`);
 
-  const also = [...twins.map(i => [i, 'same ore names']), ...r.extras.map(i => [i, 'cannot exclude'])];
+  const also = [...twins.map(i => [i, 'same ore names']), ...r.extras.map(i => [i, denied.has(i) ? 'denied, cannot exclude' : 'cannot exclude'])];
   $('alsoBox').hidden = !also.length;
   $('alsoTitle').textContent = `Also matched (${also.length})`;
   $('alsoHint').textContent = r.extras.length
-    ? 'These share every ore name with your group, so the card cannot leave them out.'
+    ? 'These have no ore name that your group lacks, so the card cannot leave them out. A denied item with the same ore names as a picked one always matches.'
     : 'These have exactly the same ore names as an item you picked, so a card cannot tell them apart.';
   const frag = document.createDocumentFragment();
   for (const [i, tag] of also.slice(0, 300)) frag.append(groupRow(i, false, tag));
@@ -434,7 +471,8 @@ $('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeo
 $('more').onclick = renderMore;
 $('checkMore').onclick = moreCheck;
 $('addAll').onclick = () => toggle(results, !results.every(i => picked.has(i)));
-$('clear').onclick = () => toggle([...picked], false);
+$('clear').onclick = () => { denied.clear(); toggle([...picked], false); };
+$('loose').onchange = () => { store.set('oredict.loose', $('loose').checked ? '1' : '0'); generate(); };
 $('wild').onchange = () => { store.set('oredict.wild', $('wild').checked ? '1' : '0'); generate(); };
 $('check').addEventListener('input', () => { clearTimeout(checkTimer); checkTimer = setTimeout(runCheck, 150); });
 $('useCheck').onclick = () => { picked.clear(); toggle(checkSet, true); };
@@ -449,8 +487,15 @@ document.addEventListener('click', e => {
   if (t) { const i = +t.dataset.i; toggle([i], !picked.has(i)); return; }
   const c = e.target.closest('.chip');
   if (c) { const ids = index.nameItems[+c.dataset.k]; toggle(ids, !ids.every(i => picked.has(i))); return; }
-  const r = e.target.closest('#group button');
-  if (r) toggle([+r.dataset.i], false);
+  const r = e.target.closest('#group button, #denied button');
+  if (r) r.dataset.deny ? deny([+r.dataset.i], false) : toggle([+r.dataset.i], false);
+});
+// right-click (long-press on touch) denies
+document.addEventListener('contextmenu', e => {
+  const t = e.target.closest('.tile');
+  if (t) { e.preventDefault(); const i = +t.dataset.i; deny([i], !denied.has(i)); return; }
+  const c = e.target.closest('.chip');
+  if (c) { e.preventDefault(); const ids = index.nameItems[+c.dataset.k]; deny(ids, !ids.every(i => denied.has(i))); }
 });
 
 fetch('data/items.json').then(r => r.json()).then(d => {
@@ -460,9 +505,11 @@ fetch('data/items.json').then(r => r.json()).then(d => {
   lower = d.items.map(it => (it[1] + ' ' + it[0] + ' ' + it[2].map(k => d.names[k]).join(' ')).toLowerCase());
   $('dataNote').textContent = `Item data: GTNH ${d.gtnh_version}, from gtnh-craft-monitor-data.`;
   if (store.get('oredict.wild') === '0') $('wild').checked = false;
+  if (store.get('oredict.loose') === '1') $('loose').checked = true;
   try {
     const keys = new Map(d.items.map((it, i) => [it[0], i]));
     for (const k of JSON.parse(store.get('oredict.picked') || '[]')) if (keys.has(k)) picked.add(keys.get(k));
+    for (const k of JSON.parse(store.get('oredict.denied') || '[]')) if (keys.has(k) && !picked.has(keys.get(k))) denied.add(keys.get(k));
   } catch { /* ignore a bad saved group */ }
   // probe one icon; with no icons published, skip straight to placeholders
   const probe = d.items.find(it => it[3]);

@@ -185,15 +185,23 @@ const Oredict = (() => {
 
   // Build a card string for the target items.
   // opts.wild: allow wildcards (default true)
+  // opts.deny: items that must not match
+  // opts.loose: only denied items must stay out; anything else may match too
   // Returns { string, positives, negatives, matched (Uint8Array), missing, extras, twins }
   function generate(index, targetList, opts = {}) {
     const wild = opts.wild !== false;
     const N = index.items.length;
     const inT = new Uint8Array(N);
     for (const i of targetList) inT[i] = 1;
-    // pull in indistinguishable items: a string can never separate them
+    const inD = new Uint8Array(N);
+    for (const i of opts.deny || []) if (!inT[i]) inD[i] = 1;
+    // pull in indistinguishable items: a string can never separate them. A denied twin stays
+    // denied and is reported as an extra that cannot be excluded.
     const twins = [];
-    for (const i of targetList) for (const j of index.twins(i)) if (!inT[j]) { inT[j] = 1; twins.push(j); }
+    for (const i of targetList) for (const j of index.twins(i)) if (!inT[j] && !inD[j]) { inT[j] = 1; twins.push(j); }
+    // items the string must keep out
+    const bad = new Uint8Array(N);
+    for (let i = 0; i < N; i++) bad[i] = !inT[i] && (opts.loose ? inD[i] : 1);
     const T = [];
     for (let i = 0; i < N; i++) if (inT[i] && index.itemNames[i].length) T.push(i);
     if (!T.length) return emptyResult(N, twins);
@@ -226,7 +234,7 @@ const Oredict = (() => {
 
     // an extra can be excluded iff it has an ore name the group lacks
     const excludable = new Uint8Array(N);
-    for (const c of cands) for (const x of c.extra) excludable[x] = index.itemNames[x].some(n => !inTN[n]) ? 1 : 2;
+    for (const c of cands) for (const x of c.extra) if (bad[x]) excludable[x] = index.itemNames[x].some(n => !inTN[n]) ? 1 : 2;
 
     let best = null;
     const seenStrings = new Map();
@@ -247,7 +255,7 @@ const Oredict = (() => {
           for (const i of c.cover) if (!covered[i]) gain++;
           if (!gain) continue;
           let pen = 0;
-          for (const x of c.extra) if (!extraSet[x]) pen += excludable[x] === 1 ? lambda : 1e4;
+          for (const x of c.extra) if (bad[x] && !extraSet[x]) pen += excludable[x] === 1 ? lambda : 1e4;
           const s = gain / (c.term.length + 1 + (c.term.includes('*') ? WILD_COST : 0) + pen);
           if (s > bs) { bs = s; bc = c; }
         }
@@ -259,7 +267,7 @@ const Oredict = (() => {
       // drop positives made redundant by later picks
       const pos = prunePositives(chosen);
       const X = new Set();
-      for (const c of pos) for (const x of c.extra) X.add(x);
+      for (const c of pos) for (const x of c.extra) if (bad[x]) X.add(x);
       const negs = pickNegatives([...X]);
       const string = pos.map(c => c.term).join('|') + negs.map(c => '&!' + c.term).join('');
       if (seenStrings.has(string)) return seenStrings.get(string);
@@ -267,7 +275,7 @@ const Oredict = (() => {
       const missing = [], extras = [];
       for (let i = 0; i < N; i++) {
         if (inT[i] && !matched[i]) missing.push(i);
-        else if (!inT[i] && matched[i]) extras.push(i);
+        else if (bad[i] && matched[i]) extras.push(i);
       }
       const res = { string, positives: pos.map(c => c.term), negatives: negs.map(c => c.term), matched, missing, extras, twins, unresolved: missing.length * 1000 + extras.length };
       seenStrings.set(string, res);
