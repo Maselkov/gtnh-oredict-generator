@@ -1,0 +1,474 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Oredict Card Generator</title>
+<meta name="description" content="Pick a group of GT New Horizons items and get the shortest AE2 Oredict card string that matches exactly those items.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: item finder | navy "screen" with the string and the group; checker and notes beneath */
+:root {
+  --bg: #e9ebf3;
+  --panel: #f7f8fc;
+  --fg: #171a2b;
+  --muted: #5b6080;
+  --line: #c9cde0;
+  --screen: #000020;
+  --screen-fg: #e8ecff;
+  --accent: #2f54d8;
+  --ok: #10a845;
+  --bad: #d8452a;
+  --hl1: #f2c230;
+  --f-display: "Pixelify Sans", "Courier New", monospace;
+  --f-body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --f-data: "JetBrains Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b0d1a; --panel: #141729; --fg: #e4e7f5; --muted: #9aa0c4; --line: #2a2f4d;
+  --accent: #7d97ff; --ok: #2fd46a; --bad: #ff6a4d; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0b0d1a; --panel: #141729; --fg: #e4e7f5; --muted: #9aa0c4; --line: #2a2f4d;
+  --accent: #7d97ff; --ok: #2fd46a; --bad: #ff6a4d; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--fg); font: 16px/1.5 var(--f-body); margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 56px }
+main { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px }
+h1 { font: 700 clamp(28px, 5vw, 40px)/1.1 var(--f-display); margin: 0; text-wrap: balance; letter-spacing: .01em }
+h2 { font: 700 20px/1.2 var(--f-display); margin: 0 }
+.lede { color: var(--muted); max-width: 70ch; margin: 8px 0 0 }
+.eyebrow { font: 700 12px var(--f-data); letter-spacing: .12em; text-transform: uppercase; color: var(--accent) }
+
+.workspace { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start }
+@media (max-width: 860px) { .workspace { grid-template-columns: minmax(0, 1fr) } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px; display: grid; gap: 14px; align-content: start; min-width: 0 }
+.card > * { min-width: 0 }
+.side { display: grid; gap: 20px; position: sticky; top: 16px; min-width: 0 }
+@media (max-width: 860px) { .side { position: static } }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap }
+.hint { color: var(--muted); font-size: 14px; margin: 0 }
+
+input[type="search"], input.text { width: 100%; font: 15px var(--f-data); padding: 9px 11px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg) }
+input[type="search"]:focus-visible, input.text:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px }
+button { font: 700 13px var(--f-data); padding: 6px 11px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer }
+button:hover { border-color: var(--accent) }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff }
+button.link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; text-decoration: underline }
+
+/* ore name chips */
+.chips { display: flex; flex-wrap: wrap; gap: 6px }
+.chip { font: 500 12px var(--f-data); padding: 3px 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid transparent; color: var(--fg); max-width: 100%; overflow-wrap: anywhere; text-align: left }
+.chip b { color: var(--muted); font-weight: 500; margin-left: 4px }
+.chip.on { background: var(--accent); color: #fff } .chip.on b { color: #dfe5ff }
+
+/* item tiles */
+.grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr)); gap: 6px }
+.tile { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); cursor: pointer; text-align: left; font: inherit; width: 100%; color: inherit }
+.tile:hover { border-color: var(--accent) }
+.tile.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--bg)) }
+.tile .t { font-size: 14px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.tile .s { font: 500 11px var(--f-data); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.ico { width: 32px; height: 32px; image-rendering: pixelated; display: block }
+.ph { width: 32px; height: 32px; border-radius: 3px; display: grid; place-items: center; font: 700 12px var(--f-data); color: #fff; background: hsl(var(--h) 45% 42%) }
+.more { justify-self: start }
+
+/* the navy screen holding the card string */
+.screen { background: var(--screen); color: var(--screen-fg); border-radius: 4px; padding: 14px; display: grid; gap: 10px; border: 3px solid #3a3f63 }
+.screen h2 { font-size: 17px }
+.screen textarea { width: 100%; min-height: 76px; resize: vertical; font: 500 14px/1.45 var(--f-data); background: #0d1240; color: var(--screen-fg); border: 1px solid #3a4280; border-radius: 3px; padding: 8px 10px; word-break: break-all }
+.screen textarea:focus-visible { outline: 2px solid var(--hl1) }
+.screen label, .screen .count { font: 12px var(--f-data); color: #a9b2e6; display: flex; gap: 6px; align-items: center }
+.screen .count.over { color: #ff7a5c }
+.screen button { background: #0d1240; color: var(--screen-fg); border-color: #3a4280 }
+.screen button.primary { background: #2f54d8; border-color: #2f54d8 }
+.status { font: 700 15px/1.3 var(--f-display) }
+.status.ok { color: #39e27a } .status.ng { color: #ff7a5c } .status.idle { color: #a9b2e6 }
+
+.group { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 340px; overflow: auto }
+.group li { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 14px }
+.group .ico, .group .ph { width: 24px; height: 24px; font-size: 10px }
+.group .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.group button { padding: 0 7px; font-size: 14px; line-height: 20px; border-color: transparent; background: none; color: var(--muted) }
+.group button:hover { color: var(--bad); border-color: var(--line) }
+.group .tag { font: 500 11px var(--f-data); color: var(--muted) }
+details summary { cursor: pointer; font-weight: 700; font-size: 14px }
+details[open] summary { margin-bottom: 8px }
+
+.how { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px }
+.how p, .how li { color: var(--muted); font-size: 15px; max-width: 62ch }
+.how ul { padding-left: 18px; margin: 6px 0 0 }
+.how h2 { font-size: 17px }
+code { font: 500 13px var(--f-data) }
+.loading { color: var(--muted); font: 14px var(--f-data) }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow">GT New Horizons · Applied Energistics 2</div>
+    <h1>Oredict Card Generator</h1>
+    <p class="lede">Pick the items you want an Oredict card to let through. The page writes the shortest card string it can find that matches exactly that group, and shows anything else the string would also catch.</p>
+  </header>
+
+  <section class="workspace">
+    <div class="card">
+      <h2>Find items</h2>
+      <input type="search" id="q" placeholder="Search by name, ore name, or @mod" autocomplete="off" spellcheck="false" aria-label="Search items">
+      <div id="nameBox" hidden>
+        <p class="hint">Ore names: click one to add every item that has it.</p>
+        <div class="chips" id="names"></div>
+      </div>
+      <div class="row">
+        <span class="hint" id="resCount"><span class="loading">Loading item data…</span></span>
+        <button id="addAll" hidden>Add all results</button>
+      </div>
+      <ul class="grid" id="results"></ul>
+      <button class="more" id="more" hidden>Show more</button>
+    </div>
+
+    <div class="side">
+      <div class="screen">
+        <div class="row">
+          <h2>Card string</h2>
+          <label><input type="checkbox" id="wild" checked> Use wildcards</label>
+        </div>
+        <textarea id="out" readonly spellcheck="false" aria-label="Generated card string" placeholder="Pick some items to get a string."></textarea>
+        <div class="row">
+          <span class="count" id="count">0 / 1024</span>
+          <button class="primary" id="copy">Copy</button>
+        </div>
+        <div class="status idle" id="status">No items picked yet.</div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <h2 id="groupTitle">Your group</h2>
+          <button id="clear" hidden>Clear</button>
+        </div>
+        <p class="hint" id="groupHint">Click items on the left to add them here.</p>
+        <ul class="group" id="group"></ul>
+        <details id="alsoBox" hidden>
+          <summary id="alsoTitle"></summary>
+          <p class="hint" id="alsoHint"></p>
+          <ul class="group" id="also"></ul>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Check a string</h2>
+    <p class="hint">Paste a card string you already use to see what it lets through.</p>
+    <input class="text" id="check" placeholder="e.g. ingot*&!*Hot*" spellcheck="false" autocomplete="off" aria-label="Card string to check">
+    <div class="row">
+      <span class="hint" id="checkCount"></span>
+      <button id="useCheck" hidden>Use these as my group</button>
+    </div>
+    <ul class="grid" id="checkRes"></ul>
+    <button class="more" id="checkMore" hidden>Show more</button>
+  </section>
+
+  <section class="how card">
+    <div>
+      <h2>How card strings work</h2>
+      <ul>
+        <li><code>|</code> is OR, <code>&amp;</code> is AND, and <code>!</code> in front of a term means "has no ore name like this". They are applied strictly left to right, with no brackets.</li>
+        <li><code>ingot*</code> starts with, <code>*Copper</code> ends with, <code>*Hot*</code> contains, and a plain name must match exactly.</li>
+        <li>An item matches a term if any one of its ore names does.</li>
+        <li>If the string contains any of <code>\ ^ $ + ( ) [ ]</code>, the whole thing is read as one regular expression instead.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Why extra items show up</h2>
+      <p>A card only sees ore names. Items with exactly the same ore names, like the same ingot from two mods, can never be told apart, so picking one includes the other. Rarely, an item carries only ore names that your group also uses, and it cannot be excluded either. Both are listed under the group.</p>
+    </div>
+    <div>
+      <h2>About wildcards</h2>
+      <p>Wildcards keep strings short, and the page only uses one when it matches nothing outside your group in this version of the pack. A future update could add items that a wildcard catches. Untick "Use wildcards" for a string made only of exact ore names.</p>
+      <p id="dataNote"></p>
+    </div>
+  </section>
+</main>
+
+<script src="oredict.js"></script>
+<script>
+const ICON_BASE = 'icons/';
+const PAGE = 120;
+const $ = id => document.getElementById(id);
+
+let data, index, mods = {};
+let lower = [];          // per item: lowercased "label key"
+let iconsOk = true;
+const picked = new Set();
+let results = [], shown = 0, checkSet = [], checkShown = 0;
+let lastGen = null;
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* storage unavailable */ } },
+};
+
+// icons are optional: if the first one fails, use letter placeholders everywhere
+function iconEl(i, cls = 'ico') {
+  const it = data.items[i];
+  if (iconsOk && it[3]) {
+    const img = document.createElement('img');
+    img.className = cls; img.loading = 'lazy'; img.alt = ''; img.width = 32; img.height = 32;
+    img.src = ICON_BASE + it[3];
+    img.onerror = () => img.replaceWith(placeholder(i));
+    return img;
+  }
+  return placeholder(i);
+}
+function placeholder(i) {
+  const it = data.items[i];
+  const d = document.createElement('div');
+  d.className = 'ph';
+  const mod = it[0].split(':')[0];
+  let h = 0; for (const c of mod) h = (h * 31 + c.charCodeAt(0)) % 360;
+  d.style.setProperty('--h', h);
+  d.textContent = it[1].replace(/[^A-Za-z0-9]/g, '').slice(0, 2);
+  return d;
+}
+function itemTitle(i) {
+  const it = data.items[i];
+  return `${it[1]}\n${it[0]} · ${mods[it[0].split(':')[0]] || ''}\n${it[2].map(k => data.names[k]).join(', ')}`;
+}
+
+function tile(i) {
+  const li = document.createElement('li');
+  const b = document.createElement('button');
+  b.className = 'tile' + (picked.has(i) ? ' on' : '');
+  b.dataset.i = i;
+  b.title = itemTitle(i);
+  b.setAttribute('aria-pressed', picked.has(i));
+  const txt = document.createElement('div');
+  txt.style.minWidth = '0';
+  const t = document.createElement('div'); t.className = 't'; t.textContent = data.items[i][1];
+  const s = document.createElement('div'); s.className = 's'; s.textContent = data.items[i][2].map(k => data.names[k]).join(' ');
+  txt.append(t, s);
+  b.append(iconEl(i), txt);
+  li.append(b);
+  return li;
+}
+
+/* ---------- search ---------- */
+function search() {
+  const raw = $('q').value.trim();
+  let q = raw.toLowerCase(), mod = null;
+  const m = q.match(/(?:^|\s)@(\S*)/);
+  if (m) { mod = m[1]; q = q.replace(m[0], ' ').trim(); }
+  const words = q.split(/\s+/).filter(Boolean);
+  results = [];
+  if (words.length || mod !== null) {
+    for (let i = 0; i < data.items.length; i++) {
+      const it = data.items[i];
+      if (mod !== null) {
+        const id = it[0].slice(0, it[0].indexOf(':'));
+        if (!id.toLowerCase().startsWith(mod) && !(mods[id] || '').toLowerCase().startsWith(mod)) continue;
+      }
+      if (words.every(w => lower[i].includes(w))) results.push(i);
+    }
+    // exact label / ore name hits first, then shorter labels
+    const first = q && results.filter(i => data.items[i][1].toLowerCase() === q || data.items[i][2].some(k => data.names[k].toLowerCase() === q));
+    if (first && first.length) { const s = new Set(first); results = [...first, ...results.filter(i => !s.has(i))]; }
+  }
+  shown = 0;
+  $('results').replaceChildren();
+  renderMore();
+  $('resCount').textContent = !raw ? 'Type to search the ' + data.items.length.toLocaleString() + ' items that have ore names.'
+    : results.length.toLocaleString() + ' item' + (results.length === 1 ? '' : 's');
+  $('addAll').hidden = !results.length;
+  $('addAll').textContent = results.length && results.every(i => picked.has(i)) ? 'Remove all results' : 'Add all results';
+  renderNames(words, mod);
+}
+function renderMore() {
+  const frag = document.createDocumentFragment();
+  for (const i of results.slice(shown, shown + PAGE)) frag.append(tile(i));
+  shown = Math.min(results.length, shown + PAGE);
+  $('results').append(frag);
+  $('more').hidden = shown >= results.length;
+  $('more').textContent = `Show more (${(results.length - shown).toLocaleString()} left)`;
+}
+function renderNames(words, mod) {
+  const box = $('names');
+  box.replaceChildren();
+  if (!words.length) { $('nameBox').hidden = true; return; }
+  const counts = new Map();
+  for (const i of results) for (const k of data.items[i][2]) {
+    const n = data.names[k].toLowerCase();
+    if (words.every(w => n.includes(w))) counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  const list = [...counts.keys()].sort((a, b) => data.names[a].length - data.names[b].length || index.nameItems[b].length - index.nameItems[a].length).slice(0, 30);
+  for (const k of list) {
+    const b = document.createElement('button');
+    const all = index.nameItems[k];
+    b.className = 'chip' + (all.every(i => picked.has(i)) ? ' on' : '');
+    b.dataset.k = k;
+    b.append(data.names[k]);
+    const c = document.createElement('b'); c.textContent = all.length; b.append(c);
+    box.append(b);
+  }
+  $('nameBox').hidden = !list.length;
+}
+
+/* ---------- picking ---------- */
+function toggle(ids, on) {
+  for (const i of ids) on ? picked.add(i) : picked.delete(i);
+  refresh();
+}
+function refresh() {
+  for (const b of document.querySelectorAll('.tile')) {
+    const on = picked.has(+b.dataset.i);
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  }
+  for (const c of document.querySelectorAll('.chip')) c.classList.toggle('on', index.nameItems[+c.dataset.k].every(i => picked.has(i)));
+  $('addAll').textContent = results.length && results.every(i => picked.has(i)) ? 'Remove all results' : 'Add all results';
+  renderGroup();
+  generate();
+  store.set('oredict.picked', JSON.stringify([...picked].map(i => data.items[i][0])));
+}
+
+function groupRow(i, removable, tag) {
+  const li = document.createElement('li');
+  li.title = itemTitle(i);
+  const t = document.createElement('span'); t.className = 't'; t.textContent = data.items[i][1];
+  li.append(iconEl(i), t);
+  if (removable) {
+    const b = document.createElement('button'); b.textContent = '×'; b.dataset.i = i;
+    b.setAttribute('aria-label', 'Remove ' + data.items[i][1]);
+    li.append(b);
+  } else if (tag) {
+    const s = document.createElement('span'); s.className = 'tag'; s.textContent = tag; li.append(s);
+  }
+  return li;
+}
+function renderGroup() {
+  const ids = [...picked].sort((a, b) => data.items[a][1].localeCompare(data.items[b][1]));
+  $('groupTitle').textContent = ids.length ? `Your group (${ids.length.toLocaleString()})` : 'Your group';
+  $('groupHint').hidden = ids.length > 0;
+  $('clear').hidden = !ids.length;
+  const frag = document.createDocumentFragment();
+  for (const i of ids.slice(0, 500)) frag.append(groupRow(i, true));
+  if (ids.length > 500) { const li = document.createElement('li'); li.className = 'hint'; li.textContent = `and ${(ids.length - 500).toLocaleString()} more`; frag.append(li); }
+  $('group').replaceChildren(frag);
+}
+
+/* ---------- generation (in a worker when available) ---------- */
+let worker = null, genId = 0;
+try {
+  worker = new Worker('worker.js');
+  worker.onmessage = e => { if (e.data.id === genId) showResult(e.data); };
+  worker.onerror = () => { worker = null; generate(); };
+} catch { worker = null; }
+
+let genTimer = 0;
+function generate() {
+  clearTimeout(genTimer);
+  if (!picked.size) { showResult({ string: '', extras: [], missing: [], twins: [] }); return; }
+  setStatus('idle', 'Working…');
+  genTimer = setTimeout(() => {
+    const msg = { id: ++genId, targets: [...picked], wild: $('wild').checked };
+    if (worker) worker.postMessage(msg);
+    else { const r = Oredict.generate(index, msg.targets, { wild: msg.wild }); showResult({ id: msg.id, ...r }); }
+  }, 120);
+}
+function setStatus(kind, text) { const s = $('status'); s.className = 'status ' + kind; s.textContent = text; }
+
+function showResult(r) {
+  lastGen = r;
+  $('out').value = r.string;
+  const len = r.string.length;
+  $('count').textContent = `${len} / 1024`;
+  $('count').classList.toggle('over', len > 1024);
+  const twins = r.twins.filter(i => !picked.has(i));
+  if (!picked.size) setStatus('idle', 'No items picked yet.');
+  else if (len > 1024) setStatus('ng', 'Too long for one card (1024 characters max). Split the group across two cards.');
+  else if (r.missing.length) setStatus('ng', `${r.missing.length} picked item${r.missing.length === 1 ? ' is' : 's are'} not matched.`);
+  else if (r.extras.length) setStatus('ng', `Also lets through ${r.extras.length} item${r.extras.length === 1 ? '' : 's'} that cannot be excluded.`);
+  else if (twins.length) setStatus('ok', `Matches your group, plus ${twins.length} item${twins.length === 1 ? '' : 's'} with identical ore names.`);
+  else setStatus('ok', 'Matches exactly your group.');
+
+  const also = [...twins.map(i => [i, 'same ore names']), ...r.extras.map(i => [i, 'cannot exclude'])];
+  $('alsoBox').hidden = !also.length;
+  $('alsoTitle').textContent = `Also matched (${also.length})`;
+  $('alsoHint').textContent = r.extras.length
+    ? 'These share every ore name with your group, so the card cannot leave them out.'
+    : 'These have exactly the same ore names as an item you picked, so a card cannot tell them apart.';
+  const frag = document.createDocumentFragment();
+  for (const [i, tag] of also.slice(0, 300)) frag.append(groupRow(i, false, tag));
+  $('also').replaceChildren(frag);
+}
+
+/* ---------- checker ---------- */
+let checkTimer = 0;
+function runCheck() {
+  const s = $('check').value;
+  checkSet = [];
+  if (s.trim()) {
+    try {
+      const r = index.evaluate(s);
+      r.set.forEach((v, i) => { if (v) checkSet.push(i); });
+      $('checkCount').textContent = `${checkSet.length.toLocaleString()} item${checkSet.length === 1 ? '' : 's'} match` + (r.mode === 'regex' ? ' (read as a regular expression)' : '') + (s.length > 1024 ? '. This is over the 1024-character limit.' : '');
+    } catch (e) {
+      $('checkCount').textContent = 'The card would ignore this string: it is read as a regular expression, and that expression is invalid.';
+    }
+  } else $('checkCount').textContent = '';
+  $('useCheck').hidden = !checkSet.length;
+  checkShown = 0;
+  $('checkRes').replaceChildren();
+  moreCheck();
+}
+function moreCheck() {
+  const frag = document.createDocumentFragment();
+  for (const i of checkSet.slice(checkShown, checkShown + PAGE)) frag.append(tile(i));
+  checkShown = Math.min(checkSet.length, checkShown + PAGE);
+  $('checkRes').append(frag);
+  $('checkMore').hidden = checkShown >= checkSet.length;
+  $('checkMore').textContent = `Show more (${(checkSet.length - checkShown).toLocaleString()} left)`;
+}
+
+/* ---------- wiring ---------- */
+let qTimer = 0;
+$('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(search, 120); });
+$('more').onclick = renderMore;
+$('checkMore').onclick = moreCheck;
+$('addAll').onclick = () => toggle(results, !results.every(i => picked.has(i)));
+$('clear').onclick = () => toggle([...picked], false);
+$('wild').onchange = () => { store.set('oredict.wild', $('wild').checked ? '1' : '0'); generate(); };
+$('check').addEventListener('input', () => { clearTimeout(checkTimer); checkTimer = setTimeout(runCheck, 150); });
+$('useCheck').onclick = () => { picked.clear(); toggle(checkSet, true); };
+$('copy').onclick = async () => {
+  const s = $('out').value;
+  if (!s) return;
+  try { await navigator.clipboard.writeText(s); } catch { $('out').select(); document.execCommand('copy'); }
+  $('copy').textContent = 'Copied'; setTimeout(() => { $('copy').textContent = 'Copy'; }, 1200);
+};
+document.addEventListener('click', e => {
+  const t = e.target.closest('.tile');
+  if (t) { const i = +t.dataset.i; toggle([i], !picked.has(i)); return; }
+  const c = e.target.closest('.chip');
+  if (c) { const ids = index.nameItems[+c.dataset.k]; toggle(ids, !ids.every(i => picked.has(i))); return; }
+  const r = e.target.closest('#group button');
+  if (r) toggle([+r.dataset.i], false);
+});
+
+fetch('data/items.json').then(r => r.json()).then(d => {
+  data = d;
+  index = new Oredict.Index(d);
+  mods = d.mods || {};
+  lower = d.items.map(it => (it[1] + ' ' + it[0] + ' ' + it[2].map(k => d.names[k]).join(' ')).toLowerCase());
+  $('dataNote').textContent = `Item data: GTNH ${d.gtnh_version}, from gtnh-craft-monitor-data.`;
+  if (store.get('oredict.wild') === '0') $('wild').checked = false;
+  try {
+    const keys = new Map(d.items.map((it, i) => [it[0], i]));
+    for (const k of JSON.parse(store.get('oredict.picked') || '[]')) if (keys.has(k)) picked.add(keys.get(k));
+  } catch { /* ignore a bad saved group */ }
+  // probe one icon; with no icons published, skip straight to placeholders
+  const probe = d.items.find(it => it[3]);
+  const img = new Image();
+  img.onload = () => { search(); refresh(); };
+  img.onerror = () => { iconsOk = false; search(); refresh(); };
+  if (probe) img.src = ICON_BASE + probe[3]; else img.onerror();
+}).catch(() => { $('resCount').textContent = 'Could not load the item data. Reload to try again.'; });
+</script>
