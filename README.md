@@ -18,7 +18,7 @@ A single-page web tool for Applied Energistics 2 Oredict cards in GT New Horizon
 python3 build/build_data.py --tag gtnh-data-2.9.0
 ```
 
-Pass `--images images.zip` to also copy item icons into `icons/`. A `.webp` next to each `.png` path is used when the zip has one. Without icons, the page shows lettered placeholders.
+Pass `--images images.zip` to also copy item icons into `icons/`. With Pillow installed, large animated icons are re-encoded at 32 px and half the frame rate (same loop length), which takes the icon set from about 142 MB to 62 MB. Without icons, the page shows lettered placeholders.
 
 Everything runs in the browser.
 

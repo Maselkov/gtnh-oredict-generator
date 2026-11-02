@@ -7,19 +7,75 @@ Usage:
   python3 build/build_data.py --src ./downloaded-json --images images.zip
 
 Only items that have at least one ore dictionary name are kept, since nothing else
-can be matched by an oredict card. Icons are copied as-is from the zip; a .webp
-next to the .png path is preferred when the zip has one.
+can be matched by an oredict card. Icons are copied from the zip; a .webp next to
+the .png path is preferred when the zip has one. Large animated icons (some are
+160 px, 400 frames) are re-encoded at 32 px and half the frame rate when Pillow is
+installed; pass --no-shrink to copy them as they are.
 """
 import argparse
+import io
 import json
 import os
+import shutil
 import sys
+from concurrent.futures import ProcessPoolExecutor
 import urllib.request
 import zipfile
 
 REPO = "Maselkov/gtnh-craft-monitor-data"
 ASSETS = ["ore_dict.json", "icons_lookup.json", "item_info.json", "data.json"]
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SHRINK_OVER = 20_000  # bytes; smaller icons are left alone
+SHRINK_SIZE = 32      # px, the size the page shows icons at
+SHRINK_STEP = 2       # keep every 2nd frame, doubling its duration
+
+
+def frame_durations(raw):
+    """Per-frame durations (ms) from the WebP ANMF chunks; Pillow drops some of them."""
+    out, i = [], 12
+    while i + 8 <= len(raw):
+        cid, size = raw[i:i + 4], int.from_bytes(raw[i + 4:i + 8], "little")
+        if cid == b"ANMF":
+            out.append(int.from_bytes(raw[i + 20:i + 23], "little"))
+        i += 8 + size + (size & 1)
+    return out
+
+
+def shrink(raw):
+    """Downscale an animated WebP and drop every other frame. Returns the smaller bytes."""
+    from PIL import Image
+    im = Image.open(io.BytesIO(raw))
+    n = getattr(im, "n_frames", 1)
+    if n < 2 and im.width <= SHRINK_SIZE:
+        return raw
+    src_durs = frame_durations(raw)
+    if len(src_durs) != n:
+        src_durs = [50] * n
+    frames, durs = [], []
+    for i in range(0, n, SHRINK_STEP):
+        im.seek(i)
+        f = im.convert("RGBA")
+        if f.width > SHRINK_SIZE:
+            # source icons are pixel art at whole multiples of 16 px, so nearest stays crisp
+            f = f.resize((SHRINK_SIZE, SHRINK_SIZE * f.height // f.width), Image.NEAREST)
+        frames.append(f)
+        # each kept frame lasts as long as the frames it replaces
+        durs.append(sum(src_durs[i:i + SHRINK_STEP]))
+    buf = io.BytesIO()
+    frames[0].save(buf, "WEBP", save_all=len(frames) > 1, append_images=frames[1:], duration=durs,
+                   loop=0, lossless=True, quality=100, method=6)
+    out = buf.getvalue()
+    return out if len(out) < len(raw) else raw
+
+
+def write_icon(job):
+    dest, raw, do_shrink = job
+    if do_shrink and len(raw) > SHRINK_OVER:
+        raw = shrink(raw)
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    with open(dest, "wb") as f:
+        f.write(raw)
+    return len(raw)
 
 
 def load_assets(args):
@@ -58,6 +114,7 @@ def main():
     ap.add_argument("--images", help="images zip to extract icons from")
     ap.add_argument("--out", default=os.path.join(ROOT, "data", "items.json"))
     ap.add_argument("--icons-out", default=os.path.join(ROOT, "icons"))
+    ap.add_argument("--no-shrink", action="store_true", help="copy animated icons unchanged")
     args = ap.parse_args()
     if not args.tag and not args.src:
         ap.error("pass --tag or --src")
@@ -84,7 +141,8 @@ def main():
             return None
         if zf is None:
             return path
-        for cand in (path[:-4] + ".webp", path):
+        cands = (path[:-4] + ".webp", path) if path.endswith(".png") else (path,)
+        for cand in cands:
             if cand in zip_names:
                 return cand
         return None
@@ -98,11 +156,18 @@ def main():
         items.append([key, labels.get(key, key), sorted(item_names[key]), icon or 0])
 
     if zf:
-        for path in icons:
-            dest = os.path.join(args.icons_out, path)
-            os.makedirs(os.path.dirname(dest), exist_ok=True)
-            with zf.open(path) as src, open(dest, "wb") as dst:
-                dst.write(src.read())
+        do_shrink = not args.no_shrink
+        if do_shrink:
+            try:
+                import PIL  # noqa: F401
+            except ImportError:
+                print("Pillow not installed; copying icons without shrinking", file=sys.stderr)
+                do_shrink = False
+        shutil.rmtree(args.icons_out, ignore_errors=True)
+        jobs = ((os.path.join(args.icons_out, p), zf.read(p), do_shrink) for p in icons)
+        with ProcessPoolExecutor() as pool:
+            total = sum(pool.map(write_icon, jobs, chunksize=64))
+        print(f"icons: {total / 1e6:.1f} MB", file=sys.stderr)
 
     mods = sorted({k.split(":", 1)[0] for k in item_names})
     out = {
