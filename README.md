@@ -2,6 +2,8 @@
 
 A single-page web tool for Applied Energistics 2 Oredict cards in GT New Horizons. Search for items, pick a group, and get the shortest card string the page can find that matches exactly that group. You can also paste an existing string to see what it lets through.
 
+**Use it:** https://maselkov.github.io/gtnh-oredict-generator/
+
 ## How it works
 
 - **Matching:** `oredict.js` is a port of `OreFilteredList` from [GTNH's AE2](https://github.com/GTNewHorizons/Applied-Energistics-2-Unofficial). `|` and `&` are applied left to right with no precedence, `!` means "has no ore name like this", and `*` gives starts-with, ends-with and contains matches. A string containing `\ ^ $ + ( ) [ ]` is read as one regular expression.
