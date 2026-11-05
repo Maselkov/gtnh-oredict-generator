@@ -1,6 +1,6 @@
 # GTNH Oredict Card Generator
 
-A single-page web tool for Applied Energistics 2 Oredict cards in GT New Horizons. Search for items, pick a group, and get the shortest card string the page can find that matches exactly that group. You can also paste an existing string to see what it lets through.
+A single-page web tool for Applied Energistics 2 Oredict cards in GT New Horizons. Search for items, pick a group, and get the shortest card string the page can find that matches exactly that group. You can also paste a string you already use into the card string box: what it matches becomes your group, ready to edit.
 
 **Use it:** https://maselkov.github.io/gtnh-oredict-generator/
 

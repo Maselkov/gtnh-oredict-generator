@@ -8,7 +8,7 @@
 <meta name="description" content="Pick a group of GT New Horizons items and get the shortest AE2 Oredict card string that matches exactly those items.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@500;700&display=swap">
 <style>
-/* Layout: navy "screen" with the string on top; item finder | group beneath; checker and notes last */
+/* Layout: navy "screen" with the string on top; item finder | group beneath; notes last */
 :root {
   --bg: #e9ebf3;
   --panel: #f7f8fc;
@@ -116,7 +116,7 @@ code { font: 500 13px var(--f-data) }
   <header>
     <div class="eyebrow">GT New Horizons · Applied Energistics 2</div>
     <h1>Oredict Card Generator</h1>
-    <p class="lede">Pick the items you want an Oredict card to let through. The page writes the shortest card string it can find that matches exactly that group, and shows anything else the string would also catch.</p>
+    <p class="lede">Pick the items you want an Oredict card to let through. The page writes the shortest card string it can find that matches exactly that group, and shows anything else the string would also catch. You can also paste a string you already use to see what it lets through and edit it from there.</p>
   </header>
 
   <section class="screen" aria-label="Card string">
@@ -127,10 +127,10 @@ code { font: 500 13px var(--f-data) }
         <label title="Only denied items have to stay out. The string may also let through items you did not pick, which keeps it shorter."><input type="checkbox" id="loose"> Only block denied</label>
       </div>
     </div>
-    <textarea id="out" readonly spellcheck="false" aria-label="Generated card string" placeholder="Pick some items to get a string."></textarea>
+    <textarea id="out" spellcheck="false" autocomplete="off" aria-label="Card string" placeholder="Pick items below, or paste a card string you already use."></textarea>
     <div class="row">
       <div class="status idle" id="status">No items picked yet.</div>
-      <div class="row"><span class="count" id="count">0 / 1024</span><button class="primary" id="copy">Copy</button></div>
+      <div class="row"><span class="count" id="count">0 / 1024</span><button id="rewrite" hidden title="Write a new string for the items your string matches">Shorten</button><button class="primary" id="copy">Copy</button></div>
     </div>
   </section>
 
@@ -169,18 +169,6 @@ code { font: 500 13px var(--f-data) }
     </div>
   </section>
 
-  <section class="card">
-    <h2>Check a string</h2>
-    <p class="hint">Paste a card string you already use to see what it lets through.</p>
-    <input class="text" id="check" placeholder="e.g. ingot*&!*Hot*" spellcheck="false" autocomplete="off" aria-label="Card string to check">
-    <div class="row">
-      <span class="hint" id="checkCount"></span>
-      <button id="useCheck" hidden>Use these as my group</button>
-    </div>
-    <ul class="grid" id="checkRes"></ul>
-    <button class="more" id="checkMore" hidden>Show more</button>
-  </section>
-
   <section class="how card">
     <div>
       <h2>How card strings work</h2>
@@ -215,7 +203,7 @@ let lower = [];          // per item: lowercased "label key"
 let iconsOk = true;
 const picked = new Set();
 const denied = new Set();
-let results = [], shown = 0, checkSet = [], checkShown = 0;
+let results = [], shown = 0;
 let lastGen = null;
 
 const store = {
@@ -330,13 +318,16 @@ function renderNames(words, mod) {
 /* ---------- picking ---------- */
 function toggle(ids, on) {
   for (const i of ids) { if (on) { picked.add(i); denied.delete(i); } else picked.delete(i); }
+  pasted = null;
   refresh();
 }
 function deny(ids, on) {
   for (const i of ids) { if (on) { denied.add(i); picked.delete(i); } else denied.delete(i); }
+  pasted = null;
   refresh();
 }
-function refresh() {
+// regen=false keeps a string the user pasted instead of writing a new one
+function refresh(regen = true) {
   for (const b of document.querySelectorAll('.tile')) {
     const on = picked.has(+b.dataset.i);
     b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
@@ -349,9 +340,10 @@ function refresh() {
   }
   $('addAll').textContent = results.length && results.every(i => picked.has(i)) ? 'Remove all results' : 'Add all results';
   renderGroup();
-  generate();
+  if (regen) generate();
   store.set('oredict.picked', JSON.stringify([...picked].map(i => data.items[i][0])));
   store.set('oredict.denied', JSON.stringify([...denied].map(i => data.items[i][0])));
+  store.set('oredict.pasted', pasted === null ? '' : pasted);
 }
 
 function groupRow(i, removable, tag, kind) {
@@ -409,12 +401,17 @@ function generate() {
 }
 function setStatus(kind, text) { const s = $('status'); s.className = 'status ' + kind; s.textContent = text; }
 
-function showResult(r) {
-  lastGen = r;
-  $('out').value = r.string;
-  const len = r.string.length;
+function showCount(len) {
   $('count').textContent = `${len} / 1024`;
   $('count').classList.toggle('over', len > 1024);
+}
+
+function showResult(r) {
+  lastGen = r;
+  $('rewrite').hidden = true;
+  $('out').value = r.string;
+  const len = r.string.length;
+  showCount(len);
   const loose = $('loose').checked;
   const twins = loose ? [] : r.twins.filter(i => !picked.has(i));
   const dn = denied.size ? ` and keeps out the ${denied.size} denied item${denied.size === 1 ? '' : 's'}` : '';
@@ -439,45 +436,59 @@ function showResult(r) {
   $('also').replaceChildren(frag);
 }
 
-/* ---------- checker ---------- */
-let checkTimer = 0;
-function runCheck() {
-  const s = $('check').value;
-  checkSet = [];
-  if (s.trim()) {
-    try {
-      const r = index.evaluate(s);
-      r.set.forEach((v, i) => { if (v) checkSet.push(i); });
-      $('checkCount').textContent = `${checkSet.length.toLocaleString()} item${checkSet.length === 1 ? '' : 's'} match` + (r.mode === 'regex' ? ' (read as a regular expression)' : '') + (s.length > 1024 ? '. This is over the 1024-character limit.' : '');
-    } catch (e) {
-      $('checkCount').textContent = 'The card would ignore this string: it is read as a regular expression, and that expression is invalid.';
-    }
-  } else $('checkCount').textContent = '';
-  $('useCheck').hidden = !checkSet.length;
-  checkShown = 0;
-  $('checkRes').replaceChildren();
-  moreCheck();
-}
-function moreCheck() {
-  const frag = document.createDocumentFragment();
-  for (const i of checkSet.slice(checkShown, checkShown + PAGE)) frag.append(tile(i));
-  checkShown = Math.min(checkSet.length, checkShown + PAGE);
-  $('checkRes').append(frag);
-  $('checkMore').hidden = checkShown >= checkSet.length;
-  $('checkMore').textContent = `Show more (${(checkSet.length - checkShown).toLocaleString()} left)`;
+/* ---------- pasted strings ---------- */
+// A string typed or pasted into the card string box becomes the group: picked = what it
+// matches, nothing denied. The text stays as written until the group is changed.
+let pasted = null;
+let pasteTimer = 0;
+function loadString(str) {
+  clearTimeout(genTimer);
+  genId++;  // drop any generation still running for the old group
+  if (!str.trim()) {
+    pasted = null;
+    picked.clear(); denied.clear();
+    refresh(false);
+    showResult({ string: '', extras: [], missing: [], twins: [] });
+    return;
+  }
+  let r;
+  try { r = index.evaluate(str); }
+  catch {
+    showCount(str.length);
+    $('rewrite').hidden = true;
+    setStatus('ng', 'The card would ignore this string: it contains one of \\ ^ $ + ( ) [ ], so it is read as a regular expression, and that expression is invalid.');
+    return;
+  }
+  pasted = str;
+  picked.clear(); denied.clear();
+  r.set.forEach((v, i) => { if (v) picked.add(i); });
+  refresh(false);
+  showCount(str.length);
+  $('alsoBox').hidden = true;
+  $('rewrite').hidden = !picked.size;
+  const n = picked.size;
+  const how = r.mode === 'regex' ? ' It is read as a regular expression.' : '';
+  if (!n) setStatus('ng', 'This string matches no items.' + how);
+  else if (str.length > 1024) setStatus('ng', `Matches ${n.toLocaleString()} item${n === 1 ? '' : 's'}, but it is over the 1024-character limit.` + how);
+  else setStatus('ok', `Matches ${n.toLocaleString()} item${n === 1 ? '' : 's'}, now shown as your group. Change the group to get a new string.` + how);
 }
 
 /* ---------- wiring ---------- */
 let qTimer = 0;
 $('q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(search, 120); });
 $('more').onclick = renderMore;
-$('checkMore').onclick = moreCheck;
 $('addAll').onclick = () => toggle(results, !results.every(i => picked.has(i)));
 $('clear').onclick = () => { denied.clear(); toggle([...picked], false); };
-$('loose').onchange = () => { store.set('oredict.loose', $('loose').checked ? '1' : '0'); generate(); };
-$('wild').onchange = () => { store.set('oredict.wild', $('wild').checked ? '1' : '0'); generate(); };
-$('check').addEventListener('input', () => { clearTimeout(checkTimer); checkTimer = setTimeout(runCheck, 150); });
-$('useCheck').onclick = () => { picked.clear(); toggle(checkSet, true); };
+// changing an option asks for a generated string, replacing a pasted one
+$('loose').onchange = () => { store.set('oredict.loose', $('loose').checked ? '1' : '0'); pasted = null; refresh(); };
+$('wild').onchange = () => { store.set('oredict.wild', $('wild').checked ? '1' : '0'); pasted = null; refresh(); };
+$('out').addEventListener('input', () => {
+  clearTimeout(pasteTimer);
+  const str = $('out').value;
+  showCount(str.length);
+  pasteTimer = setTimeout(() => loadString(str), 250);
+});
+$('rewrite').onclick = () => { pasted = null; refresh(); };
 $('copy').onclick = async () => {
   const s = $('out').value;
   if (!s) return;
@@ -516,8 +527,10 @@ fetch('data/items.json').then(r => r.json()).then(d => {
   // probe one icon; with no icons published, skip straight to placeholders
   const probe = d.items.find(it => it[3]);
   const img = new Image();
-  img.onload = () => { search(); refresh(); };
-  img.onerror = () => { iconsOk = false; search(); refresh(); };
+  const saved = store.get('oredict.pasted');
+  const start = () => { search(); if (saved) { $('out').value = saved; loadString(saved); } else refresh(); };
+  img.onload = start;
+  img.onerror = () => { iconsOk = false; start(); };
   if (probe) img.src = ICON_BASE + probe[3]; else img.onerror();
 }).catch(() => { $('resCount').textContent = 'Could not load the item data. Reload to try again.'; });
 </script>
